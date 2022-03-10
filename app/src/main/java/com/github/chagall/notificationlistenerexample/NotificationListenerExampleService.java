@@ -1,9 +1,19 @@
 package com.github.chagall.notificationlistenerexample;
 
+import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
+import android.content.Context;
 import android.content.Intent;
+import android.os.Build;
+import android.os.Bundle;
 import android.os.IBinder;
 import android.service.notification.NotificationListenerService;
 import android.service.notification.StatusBarNotification;
+import android.widget.Toast;
+
+import androidx.core.app.NotificationCompat;
 
 /**
  * MIT License
@@ -31,10 +41,9 @@ public class NotificationListenerExampleService extends NotificationListenerServ
         listen the notifications
      */
     private static final class ApplicationPackageNames {
-        public static final String FACEBOOK_PACK_NAME = "com.facebook.katana";
-        public static final String FACEBOOK_MESSENGER_PACK_NAME = "com.facebook.orca";
-        public static final String WHATSAPP_PACK_NAME = "com.whatsapp";
-        public static final String INSTAGRAM_PACK_NAME = "com.instagram.android";
+        public static final String GMAIL_PACK_NAME = "com.google.android.gm";
+        public static final String SELF_PACK_NAME = "com.github.chagall.notificationlistenerexample";
+
     }
 
     /*
@@ -42,64 +51,116 @@ public class NotificationListenerExampleService extends NotificationListenerServ
         the notifications, to decide whether we should do something or not
      */
     public static final class InterceptedNotificationCode {
-        public static final int FACEBOOK_CODE = 1;
-        public static final int WHATSAPP_CODE = 2;
-        public static final int INSTAGRAM_CODE = 3;
-        public static final int OTHER_NOTIFICATIONS_CODE = 4; // We ignore all notification with code == 4
+        public static final int GMAIL_CODE = 1;
+        public static final int OTHER_NOTIFICATIONS_CODE = 2;
+        public static final int SELF_CODE = 3;
+
     }
 
     @Override
     public IBinder onBind(Intent intent) {
+        postNotification();
         return super.onBind(intent);
     }
 
     @Override
     public void onNotificationPosted(StatusBarNotification sbn){
-        int notificationCode = matchNotificationCode(sbn);
 
-        if(notificationCode != InterceptedNotificationCode.OTHER_NOTIFICATIONS_CODE){
-            Intent intent = new  Intent("com.github.chagall.notificationlistenerexample");
-            intent.putExtra("Notification Code", notificationCode);
-            sendBroadcast(intent);
+        int notificationCode = matchNotificationCode(sbn);
+        if (notificationCode == 2)
+            return;
+        if (notificationCode == 3)
+            return;
+
+
+        String extraTitle = "";
+        String extraText = "";
+        String extraBigText = "";
+        String allMessage = "";
+        String speechMessage = "";
+
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+
+            if (sbn.getNotification().extras.get(Notification.EXTRA_TITLE) != null)
+                extraTitle += sbn.getNotification().extras.get(Notification.EXTRA_TITLE);
+            if (sbn.getNotification().extras.get(Notification.EXTRA_TEXT) != null)
+                extraText += sbn.getNotification().extras.get(Notification.EXTRA_TEXT);
+            if (sbn.getNotification().extras.get(Notification.EXTRA_BIG_TEXT) != null)
+                extraBigText += sbn.getNotification().extras.get(Notification.EXTRA_BIG_TEXT);
+
         }
+
+        speechMessage = extraText;
+        //speechMessage = (String) sbn.getNotification().tickerText;
+
+        int i = extraBigText.indexOf(extraText) + extraText.length();
+        String bodyText = extraBigText.substring(i);
+        allMessage += "差出人: " + extraTitle + "\nタイトル: " + extraText + "\n本文: " + bodyText;
+
+        Intent intent = new  Intent("com.github.chagall.notificationlistenerexample");
+        intent.putExtra("Notification Code", notificationCode );
+        intent.putExtra("Notification SpeechMessage", speechMessage );
+        intent.putExtra("Notification AllMessage", allMessage);
+        sendBroadcast(intent);
     }
 
     @Override
     public void onNotificationRemoved(StatusBarNotification sbn){
         int notificationCode = matchNotificationCode(sbn);
-
-        if(notificationCode != InterceptedNotificationCode.OTHER_NOTIFICATIONS_CODE) {
-
-            StatusBarNotification[] activeNotifications = this.getActiveNotifications();
-
-            if(activeNotifications != null && activeNotifications.length > 0) {
-                for (int i = 0; i < activeNotifications.length; i++) {
-                    if (notificationCode == matchNotificationCode(activeNotifications[i])) {
-                        Intent intent = new  Intent("com.github.chagall.notificationlistenerexample");
-                        intent.putExtra("Notification Code", notificationCode);
-                        sendBroadcast(intent);
-                        break;
-                    }
+        StatusBarNotification[] activeNotifications = this.getActiveNotifications();
+        if(activeNotifications != null && activeNotifications.length > 0) {
+            for (int i = 0; i < activeNotifications.length; i++) {
+                if (notificationCode == matchNotificationCode(activeNotifications[i])) {
+                    Intent intent = new  Intent("com.github.chagall.notificationlistenerexample");
+                    intent.putExtra("Notification Code", notificationCode);
+                    sendBroadcast(intent);
+                    break;
                 }
             }
         }
+
     }
 
     private int matchNotificationCode(StatusBarNotification sbn) {
         String packageName = sbn.getPackageName();
+        Context context = getApplicationContext();
+        //Toast.makeText(context , packageName, Toast.LENGTH_LONG).show();
 
-        if(packageName.equals(ApplicationPackageNames.FACEBOOK_PACK_NAME)
-                || packageName.equals(ApplicationPackageNames.FACEBOOK_MESSENGER_PACK_NAME)){
-            return(InterceptedNotificationCode.FACEBOOK_CODE);
-        }
-        else if(packageName.equals(ApplicationPackageNames.INSTAGRAM_PACK_NAME)){
-            return(InterceptedNotificationCode.INSTAGRAM_CODE);
-        }
-        else if(packageName.equals(ApplicationPackageNames.WHATSAPP_PACK_NAME)){
-            return(InterceptedNotificationCode.WHATSAPP_CODE);
-        }
-        else{
+        if (packageName.equals(ApplicationPackageNames.GMAIL_PACK_NAME)){
+            return(InterceptedNotificationCode.GMAIL_CODE);
+        } else if (packageName.equals(ApplicationPackageNames.SELF_PACK_NAME)) {
+            return(InterceptedNotificationCode.SELF_CODE);
+        } else {
             return(InterceptedNotificationCode.OTHER_NOTIFICATIONS_CODE);
         }
     }
+
+
+    private void postNotification() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationManager manager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+            NotificationChannel channel = new NotificationChannel( "channel_id_1", "channel name 1", NotificationManager.IMPORTANCE_MIN);
+            manager.createNotificationChannel(channel);
+        }
+
+        Notification notification = new NotificationCompat.Builder(this, "channel_id_1")
+                .setContentTitle("通知アプリ")
+                .setContentText("通知があります")
+                .setSmallIcon(android.R.drawable.ic_menu_delete)
+                .setOngoing(true)
+                .setShowWhen(false)
+                .setContentIntent(
+                        PendingIntent.getActivity(
+                                this,
+                                1,
+                                new Intent(),
+                                PendingIntent.FLAG_UPDATE_CURRENT
+                        )
+                )
+                .setPriority(NotificationCompat.PRIORITY_MIN)
+                .build();
+        startForeground(1, notification);
+
+    }
+
 }

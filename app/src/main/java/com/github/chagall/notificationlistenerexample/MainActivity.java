@@ -1,6 +1,7 @@
 package com.github.chagall.notificationlistenerexample;
 
 import android.app.AlertDialog;
+import android.app.Notification;
 import android.content.BroadcastReceiver;
 import android.content.ComponentName;
 import android.content.Context;
@@ -10,8 +11,15 @@ import android.content.IntentFilter;
 import android.provider.Settings;
 import androidx.appcompat.app.AppCompatActivity;
 import android.os.Bundle;
+import android.service.notification.StatusBarNotification;
 import android.text.TextUtils;
+import android.util.Log;
+import android.view.View;
 import android.widget.ImageView;
+import android.speech.tts.TextToSpeech;
+import android.widget.TextView;
+
+import java.util.Locale;
 
 /**
  * MIT License
@@ -32,23 +40,24 @@ import android.widget.ImageView;
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-public class MainActivity extends AppCompatActivity {
+public class MainActivity extends AppCompatActivity implements TextToSpeech.OnInitListener {
 
     private static final String ENABLED_NOTIFICATION_LISTENERS = "enabled_notification_listeners";
     private static final String ACTION_NOTIFICATION_LISTENER_SETTINGS = "android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS";
 
-    private ImageView interceptedNotificationImageView;
-    private ImageChangeBroadcastReceiver imageChangeBroadcastReceiver;
+    private TextView interceptedNotificationTextView;
+    private NotificationBroadcastReceiver notificationBroadcastReceiver;
     private AlertDialog enableNotificationListenerAlertDialog;
+
+    TextToSpeech tts;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+        interceptedNotificationTextView = (TextView) this.findViewById(R.id.notification_message);
 
-        // Here we get a reference to the image we will modify when a notification is received
-        interceptedNotificationImageView
-                = (ImageView) this.findViewById(R.id.intercepted_notification_logo);
+        tts = new TextToSpeech(this, this);
 
         // If the user did not turn the notification listener service on we prompt him to do so
         if(!isNotificationServiceEnabled()){
@@ -57,39 +66,50 @@ public class MainActivity extends AppCompatActivity {
         }
 
         // Finally we register a receiver to tell the MainActivity when a notification has been received
-        imageChangeBroadcastReceiver = new ImageChangeBroadcastReceiver();
+        notificationBroadcastReceiver = new NotificationBroadcastReceiver();
         IntentFilter intentFilter = new IntentFilter();
         intentFilter.addAction("com.github.chagall.notificationlistenerexample");
-        registerReceiver(imageChangeBroadcastReceiver,intentFilter);
+        registerReceiver(notificationBroadcastReceiver,intentFilter);
     }
 
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        unregisterReceiver(imageChangeBroadcastReceiver);
+        unregisterReceiver(notificationBroadcastReceiver);
     }
 
-    /**
-     * Change Intercepted Notification Image
-     * Changes the MainActivity image based on which notification was intercepted
-     * @param notificationCode The intercepted notification code
-     */
-    private void changeInterceptedNotificationImage(int notificationCode){
-        switch(notificationCode){
-            case NotificationListenerExampleService.InterceptedNotificationCode.FACEBOOK_CODE:
-                interceptedNotificationImageView.setImageResource(R.drawable.facebook_logo);
-                break;
-            case NotificationListenerExampleService.InterceptedNotificationCode.INSTAGRAM_CODE:
-                interceptedNotificationImageView.setImageResource(R.drawable.instagram_logo);
-                break;
-            case NotificationListenerExampleService.InterceptedNotificationCode.WHATSAPP_CODE:
-                interceptedNotificationImageView.setImageResource(R.drawable.whatsapp_logo);
-                break;
-            case NotificationListenerExampleService.InterceptedNotificationCode.OTHER_NOTIFICATIONS_CODE:
-                interceptedNotificationImageView.setImageResource(R.drawable.other_notification_logo);
-                break;
+    public void onInit(int status) {
+        if (TextToSpeech.SUCCESS == status) {
+            Locale locale = Locale.JAPAN;
+            if (tts.isLanguageAvailable(locale) >= TextToSpeech.LANG_AVAILABLE) {
+                tts.setLanguage(locale);
+            } else {
+                Log.d("Error", "Locale");
+            }
+        } else {
+            Log.d("Error", "Init");
         }
     }
+
+
+    private void changeInterceptedNotificationMessage(int notificationCode, String speechMessage, String allMessage){
+
+        interceptedNotificationTextView.setText(allMessage);
+        if (notificationCode == 1)
+            speechText(speechMessage);
+
+    }
+
+    private void speechText(String speechContents) {
+        if (0 < speechContents.length()) {
+            if (tts.isSpeaking()) {
+                tts.stop();
+            }
+            System.out.println(speechContents);
+            tts.speak(speechContents, TextToSpeech.QUEUE_FLUSH, null);
+        }
+    }
+
 
     /**
      * Is Notification Service Enabled.
@@ -116,16 +136,17 @@ public class MainActivity extends AppCompatActivity {
     }
 
     /**
-     * Image Change Broadcast Receiver.
      * We use this Broadcast Receiver to notify the Main Activity when
      * a new notification has arrived, so it can properly change the
-     * notification image
+     * notification message
      * */
-    public class ImageChangeBroadcastReceiver extends BroadcastReceiver {
+    public class NotificationBroadcastReceiver extends BroadcastReceiver {
         @Override
         public void onReceive(Context context, Intent intent) {
             int receivedNotificationCode = intent.getIntExtra("Notification Code",-1);
-            changeInterceptedNotificationImage(receivedNotificationCode);
+            String receivedNotificationSpeechMessage = intent.getStringExtra("Notification SpeechMessage");
+            String receivedNotificationAllMessage = intent.getStringExtra("Notification AllMessage");
+            changeInterceptedNotificationMessage(receivedNotificationCode, receivedNotificationSpeechMessage, receivedNotificationAllMessage);
         }
     }
 
